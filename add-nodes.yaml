@@ -1,0 +1,22 @@
+---
+- hosts: new-workers
+  remote_user: root       
+  tasks:
+    - name: 检查主机名
+      shell: "echo $(hostname)"
+    - name: 检查主机IP
+      shell: "echo $(ip a)"
+    - name: 本地yum源配置
+      copy: 
+        src: "/etc/yum.repos.d"
+        dest: "/etc/"
+    - name: 复制启动脚本
+      copy: 
+        src: "./scripts/installer.sh"
+        dest: "/root/installer.sh"
+    - name: 修改Worker节点内核启动项
+      shell: "sh  /root/installer.sh worker"
+    - name: 检查系统系统项
+      shell: "cat /etc/grub.d/40_custom"
+      register: cat
+    - debug: var=cat.stdout_lines

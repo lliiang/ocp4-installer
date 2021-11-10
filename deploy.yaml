@@ -1,0 +1,114 @@
+---
+- hosts: bootstrap,masters,workers
+  remote_user: root       
+  tasks:
+    - name: 检查主机名
+      shell: "echo $(hostname)"
+    - name: 检查主机IP
+      shell: "echo $(ip a)"
+    - name: 本地yum源配置
+      copy: 
+        src: "/etc/yum.repos.d"
+        dest: "/etc/"
+    - name: 复制启动脚本
+      copy: 
+        src: "./scripts/installer.sh"
+        dest: "/root/installer.sh"
+
+- hosts: haproxy
+  remote_user: root   
+  tasks:
+    - name: 安装Haproxy
+      yum:
+        name: haproxy
+        state: present
+
+    - name: 配置Haproxy
+      template: 
+        src: ../templates/haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+      notify:
+        - restart haproxy
+    
+    - name: 允许haproxy绑定任意网卡
+      seboolean:
+        name: haproxy_connect_any
+        state: yes
+        persistent: yes
+      notify:
+        - restart haproxy
+
+    - name: 启动haproxy
+      service:
+        name: haproxy
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart haproxy
+      service: 
+        name: haproxy
+        state: restarted
+
+- hosts: dns
+  remote_user: root   
+  tasks:
+    - name: install dns
+      yum:
+        name: 
+          - bind 
+          - bind-utils
+        state: present
+
+    - name: Write out "{{ dns.domain | lower }}" zone file
+      template:
+        src: ../templates/zonefile.j2
+        dest: /var/named/zonefile.db
+        mode: '0644'
+      notify:
+        - restart bind
+
+    - name: Write out reverse zone file
+      template:
+        src: ../templates/reverse.j2
+        dest: /var/named/reverse.db
+        mode: '0644'
+      notify:
+        - restart bind 
+
+    - name: enabled bind
+      service: 
+        name: named
+        state: started
+        enabled: yes
+        
+  handlers:
+    - name: restart bind
+      service: 
+        name: named
+        state: restarted
+
+
+- hosts: bootstrap
+  remote_user: root       
+  tasks:
+    - name: 修改Bootstrap节点内核启动项
+      shell: "sh  /root/installer.sh bootstrap"
+
+- hosts: masters
+  remote_user: root       
+  tasks:
+    - name: 修改Master节点内核启动项
+      shell: "sh  /root/installer.sh master"
+
+- hosts: workers
+  remote_user: root       
+  tasks:
+    - name: 修改Worker节点内核启动项
+      shell: "sh  /root/installer.sh worker"
+
+- hosts: all
+  remote_user: root       
+  tasks:
+    - name: 检查系统系统项
+      shell: "cat /etc/grub.d/40_custom"
